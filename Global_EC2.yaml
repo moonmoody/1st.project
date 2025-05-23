@@ -1,0 +1,199 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Default VPC stack for the Project
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+  RegionName:
+    Type: String
+    Description: Region Name
+    AllowedValues:
+      - Seoul
+      - NoVA 
+
+Mappings:
+  CidrMap:
+    ap-northeast-2:
+      VpcCidr: 10.1.0.0/16
+      PubSn1Cidr: 10.1.1.0/24
+      PubSn2Cidr: 10.1.2.0/24
+      WebSn1Cidr: 10.1.3.0/24
+      WebSn2Cidr: 10.1.4.0/24
+
+    us-east-1:
+      VpcCidr: 10.2.0.0/16
+      PubSn1Cidr: 10.2.1.0/24
+      PubSn2Cidr: 10.2.2.0/24
+      WebSn1Cidr: 10.2.3.0/24
+      WebSn2Cidr: 10.2.4.0/24
+
+  AmiMap:
+    ap-northeast-2:
+      Ami: ami-07d737d4d8119ad79
+    us-east-1:
+      Ami: ami-0e58b56aa4d64231b
+
+  AcmArn:
+    ap-northeast-2:
+      Arn: arn:aws:acm:ap-northeast-2:699475942330:certificate/bf39cf11-38ce-49dd-9b22-cb81407e304b
+    us-east-1:
+      Arn: arn:aws:acm:us-east-1:699475942330:certificate/1138a02d-3108-4fd3-88b5-3d7497379f20
+    
+
+Resources:
+# Web Application Load Balancer & Security group
+  WebAlbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::Region} Web ALB Security Group"
+      VpcId: !ImportValue VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${RegionName}-web-alb-sg"
+ 
+  WebAlb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${RegionName}-web-alb"
+      Scheme: internet-facing # ALB 접근방식 지정속성(internet-facing 인터넷연결형alb)
+      SecurityGroups: 
+        - !Ref WebAlbSg
+      Subnets: 
+        - !ImportValue PubSn1Id
+        - !ImportValue PubSn2Id
+
+  WebAlbTg:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: '/' # 헬스체크 요청경로
+      HealthCheckTimeoutSeconds: 10 # 헬스체크 요청에 대한 응답 대기시간(기본값:5)
+      HealthyThresholdCount: 3 # 헬스체크가 연속적으로 성공해야 하는 횟수(기본값:3)
+      Name: !Sub "${ProjectName}-${RegionName}-web-alb"
+      Port: 80
+      Protocol: HTTP
+      Tags: 
+        - Key: Name
+          Value: !Sub "${ProjectName}-${RegionName}-web-alb"
+      UnhealthyThresholdCount: 3 # 헬스체크가 연속적으로 실패해야 하는 횟수(기본값:3)
+      VpcId: !ImportValue VpcId
+
+  WebAlbListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: # 리스트 형식으로 여러동작 지정가능
+        - Type: forward # 동작유형을 지정 (forward: 트래픽을 대상그룹으로 전달)
+          TargetGroupArn: !Ref WebAlbTg # 트래픽을 전달할 대상그룹의 ARN을 지정
+      LoadBalancerArn: !Ref WebAlb # 리스너가 트래픽을 수신할 로드 밸러서의 ARN을 지정
+      Port: 80
+      Protocol: HTTP
+
+  WebAlbListener443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref WebAlb
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !FindInMap [AcmArn, !Ref "AWS::Region", Arn]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAlbTg      
+
+# Lauch Template & Security Group
+  WebServerSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::Region} Web Server Security Group"
+      VpcId: !ImportValue VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !FindInMap [CidrMap, ap-northeast-2, PubSn2Cidr]
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${RegionName}-web-server-sg"
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${ProjectName}-${RegionName}-lt"
+      LaunchTemplateData:
+        ImageId: !FindInMap [AmiMap, !Ref "AWS::Region", Ami]
+        InstanceType: t2.micro
+        KeyName: !Sub "${RegionName}-Key"
+        SecurityGroupIds:
+          - !Ref WebServerSg
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+            - Key: Name
+              Value: !Sub "${ProjectName}-${RegionName}-web-instance"
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            instance_id=$(ec2-metadata -i)
+            private_ip=$(ec2-metadata -o)
+            az_name=$(ec2-metadata -z)
+            cat <<EOF > /var/www/html/index.html
+            <h1>Welcome to My Web Server</h1>
+            <h3>${instance_id}</h3>
+            <h3>${private_ip}</h3>
+            <h3>${az_name}</h3>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/512px-Amazon_Web_Services_Logo.svg.png" width=100>
+            EOF
+
+# Auto Scailing Group & Scailing Policy
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub "${ProjectName}-${RegionName}-asg"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - !ImportValue WebSn1Id
+        - !ImportValue WebSn2Id
+      TargetGroupARNs:
+        - !Ref WebAlbTg
+      DesiredCapacity: 2
+      MinSize: 2
+      MaxSize: 4
+
+  ScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 50      
+
+...
