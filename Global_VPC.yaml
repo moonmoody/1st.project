@@ -45,8 +45,6 @@ Mappings:
       Ami: ami-09a093fa2e3bfca5a      
 
 # SSH 안열리면 보안그룹 확인
-# Seoul_key : ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC1TM0e7u7ZoonpxnpA3Etk4/katg4VOfcBcYBzOst9YF/Nw0yvT2jWjIQ7nRZKKJgvSznXKezDFRJcU/cv9M1GUL3nVlOrSY+Iz9tgelqKvayU8brHW0kSp0x8y41nS1SOYqmAalMThYSlZAJIBrCPIsghOrdcZwTMN3bc4wY73fujWexaOX4Vj+MxYmskdr2Q5JgInMATdB5jCYl3clN3mvcsL/kHP0OjdVxawYzTzfqcw08PxHxKV6BZd8Hnk3xKYHwzKC4YJ/yL1gxmK3SiYmAcRr2R4z6V4e4bNfnRPyPGVTQpgKH1+xsY4s+Hroa8WgnGx3abWLnTGlCk4aKT rsa-key-20250520
-# NoVA_key : ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDYD1F0gg3K+49ZvPl58iYhEpCeX6+B1N8WyFsiknggPvKIo+70urg5yO1Y3t6lp4U/oDjZfh2gAnllixkML8MGrilOeLen+aGiol22wDTm0KJxvJl38B4z+AgGZ/HDLVy4CegFFAkYjD4mK4UDskQqXsWcuuyNkUFX0m07n8VxGDu+p7wjdzjxECRAsJNyEBOkCJLcd7yiaeQjX9s0UOkyB9zCXZzRk8lhn5K6DgAoR6vDt+JSXLAmkdwkKFqRlLjJ1nD67itL137hqAD2oRrYTpLM4Hcz7AoREZTa8REamCSy5fMgZmPCnBkE+JleIamz3MXSHO6BSy5bM/7k0czN rsa-key-20250520
 Conditions:
   Seoul: !Equals [!Ref "AWS::Region", ap-northeast-2]
   NoVA: !Equals [!Ref "AWS::Region", us-east-1]
